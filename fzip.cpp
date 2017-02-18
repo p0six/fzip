@@ -46,7 +46,7 @@ char * parseArg(int argc, char *argv[]) {
 }
 //END OF: Do not change this section
 
-char * concat(char * x, char * y) {
+const char * concat(const char * x, const char * y) {
     char * concatenation;
     concatenation = (char *) malloc(strlen(x) + strlen(y) + 1);
     strcpy(concatenation, x);
@@ -54,7 +54,7 @@ char * concat(char * x, char * y) {
     return concatenation;
 }
 
-bool addFileContents(char * path, int output_fd, int fileType, int fileNameSize) {
+bool addFileContents(const char * path, int output_fd, int fileType, int fileNameSize) {
     // need to write file type, file name size, file name, file size, file contents here..
     bool result = false;
     size_t ret_in, ret_out;
@@ -86,7 +86,7 @@ bool addFileContents(char * path, int output_fd, int fileType, int fileNameSize)
     return result;
 }
 
-bool recursiveDir(char * path, int output_fd) {
+bool recursiveDir(const char * path, int output_fd) {
     bool result = false;
     int dirType = 0;
     int fileType = 1;
@@ -101,7 +101,7 @@ bool recursiveDir(char * path, int output_fd) {
         write(output_fd, path, pathLength + 1);
         while ((entry = readdir(directory)) != NULL) {
             if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
-                char * fqFileName;
+                const char * fqFileName;
                 fqFileName = concat(concat(path, "/"), (char *) entry->d_name);
                 int fileNameSize = strlen(fqFileName);
                 if (entry->d_type == DT_REG) {
@@ -117,7 +117,7 @@ bool recursiveDir(char * path, int output_fd) {
         int pathLength = strlen(path);
         addFileContents(path, output_fd, fileType, pathLength);
         result = true;
-    } else if (errno =  EACCES) {
+    } else if (errno == EACCES) {
         printf("Permission issue, or File Not Found\n");
     } else {
         printf("Strange error likely related to lack of resources\n");
