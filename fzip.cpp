@@ -73,7 +73,6 @@ bool addFileContents(char * path, int output_fd, int fileType, int fileNameSize)
     ret_out = write(output_fd, &fileNameSize, sizeof(int));
     ret_out = write(output_fd, path, fileNameSize + 1);
 
-    cout << "addFileContents for: " << path << endl;
     int input_fd = open(path, O_RDONLY);
     if (input_fd == -1) {
         perror("open");
@@ -82,13 +81,10 @@ bool addFileContents(char * path, int output_fd, int fileType, int fileNameSize)
         // need to find file size, write it to output_fd
         ssize_t input_file_size = lseek(input_fd, 0, SEEK_END);
         lseek(input_fd,0,SEEK_SET);
-        ret_out = write(output_fd, &input_file_size, sizeof(ssize_t)); // *TODO* this is a problem / conflicts with others..
-        cout << "sizeof(ssize_t) = " << sizeof(ssize_t) << endl;
-        //ret_out = write(output_fd, &input_file_size, sizeof(int));
+        ret_out = write(output_fd, &input_file_size, sizeof(ssize_t));
 
         // need to write only file size
         char * buffer;
-        //buffer = (char*) malloc(input_file_size);
         buffer = (char*) malloc(input_file_size + 1);
         ret_in = read(input_fd, buffer, input_file_size);
         ret_out = write(output_fd, buffer, (ssize_t) ret_in);
@@ -109,7 +105,6 @@ bool recursiveDir(char * path, int output_fd) {
     ssize_t ret_in, ret_out; // these are for debugging, if necessary..
     DIR* directory = opendir(path);
     struct dirent* entry = nullptr;
-    cout << "recursiveDir for: " << path << endl;
 
     if (directory != NULL) {
         int pathLength = strlen(path);
@@ -120,9 +115,7 @@ bool recursiveDir(char * path, int output_fd) {
             if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
                 char * fqFileName;
                 fqFileName = concat(concat(path, "/"), (char *) entry->d_name);
-                cout << "fqFileName = " << fqFileName << endl;
                 int fileNameSize = strlen(fqFileName);
-                cout << "fileNameSize = " << fileNameSize << endl;
                 if (entry->d_type == DT_REG) {
                     addFileContents(fqFileName, output_fd, fileType, fileNameSize);
                 } else if (entry->d_type == DT_DIR) {
@@ -180,10 +173,8 @@ bool extractFile(char * path) {
             ret_in = read(input_fd, fileName, fileNameSize + 1);
 
             if (fileType == 0) { // directories extract successfully..
-                cout << "mkdir(" << fileName << ")\n";
                 mkdir(fileName, 0744);
             } else if (fileType == 1) { // file
-                cout << "writing " << fileName << endl;
                 ssize_t fileSize;
                 ret_in = read(input_fd, &fileSize, sizeof(ssize_t)); // intGrabber = size of file
 
@@ -213,9 +204,9 @@ int main(int argc, char** argv) {
     if (isExtract) {
         printf("Extracting %s\n", path);
         //TODO: your code to start extracting.
-        //char *outputPath = (char *) ""; 	//the path to the file or directory extracted
+        char *outputPath = (char *) ""; 	//the path to the file or directory extracted
         extractFile(path);
-        //printf("%s\n", outputPath);//relative or absolute path
+        printf("%s\n", outputPath);//relative or absolute path
     } else {
         printf("Archiving %s\n", path);
         //TODO: your code to start archiving.
