@@ -9,21 +9,13 @@
 #include <dirent.h>
 #include <iostream>
 
-#define BUF_SIZE 8192
-
+#define DIR_TYPE 0;
+#define FILE_TYPE 1;
 using namespace std;
 
 //You must fill out your name and id below
 char * studentName = (char *) "Michael Romero";
 char * studentCWID = (char *) "890228026";
-
-char * concat(char * x, char * y) {
-    char * concatted;
-    concatted = (char *) malloc(strlen(x) + strlen(y) + 1);
-    strcpy(concatted, x);
-    strcat(concatted, y);
-    return concatted;
-}
 
 //Do not change this section in your submission
 char * usageString =
@@ -65,14 +57,23 @@ char * parseArg(int argc, char *argv[]) {
  * @return
  */
 
+char * concat(char * x, char * y) {
+    char * concatenation;
+    concatenation = (char *) malloc(strlen(x) + strlen(y) + 1);
+    strcpy(concatenation, x);
+    strcat(concatenation, y);
+    return concatenation;
+}
+
 bool addFileContents(char * path, int output_fd, int fileType, int fileNameSize) {
     // need to write file type, file name size, file name, file size, file contents here..
     bool result = false;
-    int ret_in, ret_out;
-    write(output_fd, &fileType, sizeof(int));
-    write(output_fd, &fileNameSize, sizeof(int));
-    write(output_fd, path, fileNameSize + 1);
+    int ret_in, ret_out; // we only use these if we're debugging
+    ret_out = write(output_fd, &fileType, sizeof(int));
+    ret_out = write(output_fd, &fileNameSize, sizeof(int));
+    ret_out = write(output_fd, path, fileNameSize + 1);
 
+    cout << "addFileContents for: " << path << endl;
     int input_fd = open(path, O_RDONLY);
     if (input_fd == -1) {
         perror("open");
@@ -81,51 +82,58 @@ bool addFileContents(char * path, int output_fd, int fileType, int fileNameSize)
         // need to find file size, write it to output_fd
         ssize_t input_file_size = lseek(input_fd, 0, SEEK_END);
         lseek(input_fd,0,SEEK_SET);
-        ret_out = write(output_fd, &input_file_size, sizeof(int));
+        ret_out = write(output_fd, &input_file_size, sizeof(ssize_t)); // *TODO* this is a problem / conflicts with others..
+        cout << "sizeof(ssize_t) = " << sizeof(ssize_t) << endl;
+        //ret_out = write(output_fd, &input_file_size, sizeof(int));
 
         // need to write only file size
         char * buffer;
-        buffer = (char*) malloc(input_file_size);
+        //buffer = (char*) malloc(input_file_size);
+        buffer = (char*) malloc(input_file_size + 1);
         ret_in = read(input_fd, buffer, input_file_size);
         ret_out = write(output_fd, buffer, (ssize_t) ret_in);
         if (ret_out != ret_in) {
             perror("write");
+        } else {
+            result = true;
         }
     }
     close(input_fd);
+    return result;
 }
 
 bool recursiveDir(char * path, int output_fd) {
-    int input_fd;
-    ssize_t ret_in, ret_out;
-    DIR* directory = opendir(path);
-    struct dirent* entry = nullptr;
-    char buffer[BUF_SIZE];
     bool result = false;
     int dirType = 0;
     int fileType = 1;
+    ssize_t ret_in, ret_out; // these are for debugging, if necessary..
+    DIR* directory = opendir(path);
+    struct dirent* entry = nullptr;
+    cout << "recursiveDir for: " << path << endl;
 
     if (directory != NULL) {
         int pathLength = strlen(path);
-        write(output_fd, &dirType, sizeof(int));
-        write(output_fd, &pathLength, sizeof(int));
-        write(output_fd, path, pathLength + 1);
+        ret_out = write(output_fd, &dirType, sizeof(int));
+        ret_out = write(output_fd, &pathLength, sizeof(int));
+        ret_out = write(output_fd, path, pathLength + 1);
         while ((entry = readdir(directory)) != NULL) {
-            char * fqfileName;
-            fqfileName = concat(concat(path, "/"), (char *) entry->d_name);
-            int fileNameSize = strlen(fqfileName);
             if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
+                char * fqFileName;
+                fqFileName = concat(concat(path, "/"), (char *) entry->d_name);
+                cout << "fqFileName = " << fqFileName << endl;
+                int fileNameSize = strlen(fqFileName);
+                cout << "fileNameSize = " << fileNameSize << endl;
                 if (entry->d_type == DT_REG) {
-                    addFileContents(fqfileName, output_fd, fileType, fileNameSize);
+                    addFileContents(fqFileName, output_fd, fileType, fileNameSize);
                 } else if (entry->d_type == DT_DIR) {
-                    recursiveDir(fqfileName, output_fd);
-                } // no use for an else at this point..
-            } // we ignore "." and ".." entries in directories
+                    recursiveDir(fqFileName, output_fd);
+                }
+            }
         }
     } else if (errno == ENOTDIR) {
         printf("%s is a standard file\n", path);
         int pathLength = strlen(path);
-        addFileContents(path, output_fd, fileType, pathLength);
+        addFileContents(path, output_fd, fileType, pathLength); // derp
     } else if (errno =  EACCES) {
         printf("Privilege error, or File Not Found\n");
     } else if (errno == EMFILE) {
@@ -140,7 +148,6 @@ bool recursiveDir(char * path, int output_fd) {
 
 bool archiveFile(char * path) {
     int output_fd;
-    ssize_t ret_in, ret_out;
     bool result = true;
     output_fd = open(concat(path, ".fzip"), O_WRONLY | O_CREAT, 0644);
     if (output_fd == -1) {
@@ -149,11 +156,12 @@ bool archiveFile(char * path) {
     }
     recursiveDir(path, output_fd);
     close(output_fd);
+    return result;
 }
 
 bool extractFile(char * path) {
     int input_fd;
-    ssize_t ret_in;
+    ssize_t ret_in, ret_out; // used for debugging, if necessary..
     input_fd = open(path, O_RDONLY);
     if (input_fd == -1) {
         perror("open");
@@ -161,30 +169,35 @@ bool extractFile(char * path) {
     } else {
         ssize_t input_file_size = lseek(input_fd, 0, SEEK_END);
         lseek(input_fd,0,SEEK_SET);
-        int fileType;
+        int fileType, fileNameSize; // 0 is a dir, 1 is a file
         while((ret_in = read (input_fd, &fileType, sizeof(int))) > 0) { // ret_in == number of bytes read
-            char * fileName;
-            int fileNameSize;
+            // grab the size of the file name
             ret_in = read(input_fd, &fileNameSize, sizeof(int));
+
+            // grab the actual filename
+            char * fileName;
             fileName = (char *) malloc(fileNameSize + 1);
             ret_in = read(input_fd, fileName, fileNameSize + 1);
+
             if (fileType == 0) { // directories extract successfully..
+                cout << "mkdir(" << fileName << ")\n";
                 mkdir(fileName, 0744);
             } else if (fileType == 1) { // file
-                int fileSize;
-                ret_in = read(input_fd, &fileSize, sizeof(int)); // intGrabber = size of file
+                cout << "writing " << fileName << endl;
+                ssize_t fileSize;
+                ret_in = read(input_fd, &fileSize, sizeof(ssize_t)); // intGrabber = size of file
 
                 // we need to read the contents of the file entry within the archive..
                 char * buffer; // this could be an issue if we're dealing with huge file sizes..
                 buffer = (char*) malloc(fileSize + 1);
-                ret_in = read (input_fd, buffer, fileSize + 1); // buffer = file content
+                ret_in = read (input_fd, buffer, fileSize); // buffer = file content
 
                 // now we need to write the contents
                 int output_fd = open(fileName, O_WRONLY | O_CREAT, 0644);
                 if (output_fd == -1) {
                     perror("open");
                 } else {
-                    write(output_fd, buffer, fileSize);
+                    ret_out = write(output_fd, buffer, fileSize);
                     close(output_fd);
                 }
 
