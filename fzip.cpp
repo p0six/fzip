@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <cstring>
 #include <dirent.h>
+#include <iostream>
 using namespace std;
 
 // TODO: Decide on whether or not I want to use return values.. not really using 'bool' in its current state.
@@ -18,22 +19,26 @@ char * studentCWID = (char *) "890228026";
 
 //Do not change this section in your submission
 char * usageString =
-        (char *) "To archive a file: 		fzip -a FILE_PATH\n"
-                "To archive a directory: 	fzip -a DIR_PATH\n"
-                "To extract a file: 		fzip -x FILE_PATH\n"
-                "To extract a directory: 	fzip -x DIR_PATH\n";
+        (char *) "To archive a file: 		fzip -a INPUT_FILE_NAME  OUTPUT_FILE_NAME\n"
+                "To archive a directory: 	fzip -a INPUT_DIR_NAME   OUTPUT_DIR_NAME\n"
+                "To extract a file: 		fzip -x INPUT_FILE_NAME  OUTPUT_FILE_NAME\n"
+                "To extract a directory: 	fzip -x INPUT_DIR_NAME   OUTPUT_DIR_NAME\n";
 
 bool isExtract = false;
-char * parseArg(int argc, char *argv[]) {
-    if (argc != 3) {
-        fprintf(stderr, "Incorrect arguments\n%s", usageString);
-        exit(EXIT_FAILURE);
-    }
-    if (strncmp("-n", argv[1], 2) == 0) {
+void parseArg(int argc, char *argv[], char ** inputName, char ** outputName) {
+    if (argc >= 2 && strncmp("-n", argv[1], 2) == 0) {
         printf("Student Name: %s\n", studentName);
         printf("Student CWID: %s\n", studentCWID);
         exit(EXIT_SUCCESS);
     }
+
+    if (argc != 4) {
+        fprintf(stderr, "Incorrect arguements\n%s", usageString);
+        exit(EXIT_FAILURE);
+    }
+
+    *inputName  = argv[2];
+    *outputName = argv[3];
     if (strncmp("-a", argv[1], 2) == 0) {
         isExtract = false;
     } else if (strncmp("-x", argv[1], 2) == 0) {
@@ -42,7 +47,6 @@ char * parseArg(int argc, char *argv[]) {
         fprintf(stderr, "Incorrect arguements\n%s", usageString);
         exit(EXIT_FAILURE);
     }
-    return argv[2];
 }
 //END OF: Do not change this section
 
@@ -125,10 +129,10 @@ bool recursiveDir(const char * path, int output_fd) {
     return result;
 }
 
-bool archiveFile(char * path) {
+bool archiveFile(char * path, char * outputPath) {
     bool result = false;
     int output_fd;
-    output_fd = open(concat(path, ".fzip"), O_WRONLY | O_CREAT, 0644);
+    output_fd = open(outputPath, O_WRONLY | O_CREAT, 0644);
     if (output_fd == -1) {
         perror("open");
         return false;
@@ -140,7 +144,7 @@ bool archiveFile(char * path) {
     return result;
 }
 
-bool extractFile(char * path) {
+bool extractFile(char * path, char * outputPath) {
     bool result = false;
     int input_fd;
     size_t ret_in, ret_out; // used for debugging, if necessary..
@@ -148,39 +152,47 @@ bool extractFile(char * path) {
     if (input_fd == -1) {
         perror("open");
     } else {
-        int fileType, fileNameSize; // 0 is a dir, 1 is a file
-        while((ret_in = read (input_fd, &fileType, sizeof(int))) > 0) { // ret_in == number of bytes read
-            // grab the size of the file name
-            read(input_fd, &fileNameSize, sizeof(int));
+        if (mkdir(outputPath, 0744) < 0 && strcmp(outputPath, ".") != 0) {
+            perror("write");
+        } else {
+            int fileType, fileNameSize; // 0 is a dir, 1 is a file
+            while ((ret_in = read(input_fd, &fileType, sizeof(int))) > 0) { // ret_in == number of bytes read
+                // grab the size of the file name
+                read(input_fd, &fileNameSize, sizeof(int));
 
-            // grab the actual filename
-            char * fileName;
-            fileName = (char *) malloc(fileNameSize + 1);
-            read(input_fd, fileName, fileNameSize + 1);
+                // grab the actual filename
+                char *fileName;
+                fileName = (char *) malloc(fileNameSize + 1);
+                read(input_fd, fileName, fileNameSize + 1);
 
-            if (fileType == 0) { // directories extract successfully..
-                if (mkdir(fileName, 0744) < 0) {
-                    perror("write");
-                } else {
-                    result = true;
-                }
-            } else if (fileType == 1) { // file
-                size_t fileSize;
-                read(input_fd, &fileSize, sizeof(size_t)); // intGrabber = size of file
+                // prepend outputPath with fileName per new requirements
+                const char *extractedFile;
+                extractedFile = concat(concat(outputPath, "/"), (char *) fileName);
 
-                // we need to read the contents of the file entry within the archive..
-                char * buffer; // this could be an issue if we're dealing with huge file sizes..
-                buffer = (char*) malloc(fileSize + 1);
-                read (input_fd, buffer, fileSize); // buffer = file content
+                if (fileType == 0) { // directories extract successfully..
+                    if (mkdir(extractedFile, 0744) < 0) {
+                        perror("write");
+                    } else {
+                        result = true;
+                    }
+                } else if (fileType == 1) { // file
+                    size_t fileSize;
+                    read(input_fd, &fileSize, sizeof(size_t)); // intGrabber = size of file
 
-                // now we need to write the contents
-                int output_fd = open(fileName, O_WRONLY | O_CREAT, 0644);
-                if (output_fd == -1) {
-                    perror("open");
-                } else {
-                    write(output_fd, buffer, fileSize);
-                    close(output_fd);
-                    result = true;
+                    // we need to read the contents of the file entry within the archive..
+                    char *buffer; // this could be an issue if we're dealing with huge file sizes..
+                    buffer = (char *) malloc(fileSize + 1);
+                    read(input_fd, buffer, fileSize); // buffer = file content
+
+                    // now we need to write the contents
+                    int output_fd = open(extractedFile, O_WRONLY | O_CREAT, 0644);
+                    if (output_fd == -1) {
+                        perror("open");
+                    } else {
+                        write(output_fd, buffer, fileSize);
+                        close(output_fd);
+                        result = true;
+                    }
                 }
             }
         }
@@ -189,19 +201,29 @@ bool extractFile(char * path) {
     return result;
 }
 
+/**
+ *
+ * Your program should archive or extract based on the flag passed in.
+ * Both when extracting and archiving, it should print the output file/dir path as the last line.
+ *
+ * @param argc the number of args
+ * @param argv the arg string table
+ * @return
+ */
+
 int main(int argc, char** argv) {
-    char * path = parseArg(argc, argv);
+    char * inputName, * outputName;
+    parseArg(argc, argv, &inputName, &outputName);
     if (isExtract) {
-        printf("Extracting %s\n", path);
+        printf("Extracting %s\n", inputName);
         //TODO: your code to start extracting.
-        char *outputPath = (char *) ""; 	//the path to the file or directory extracted
-        extractFile(path);
-        printf("%s\n", outputPath);//relative or absolute path
+        extractFile(inputName, outputName);
+        printf("%s\n", outputName);//relative or absolute path
     } else {
-        printf("Archiving %s\n", path);
-        //TODO: your code to start archiving.
-        archiveFile(path);
-        printf("%s.fzip\n", path);
+        printf("Archiving %s\n", inputName);
+       //TODO: your code to start archiving.
+        archiveFile(inputName, outputName);
+        printf("%s\n", outputName);
     }
     return EXIT_SUCCESS;
 }
